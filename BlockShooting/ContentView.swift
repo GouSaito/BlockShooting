@@ -48,8 +48,6 @@ struct ContentView: View {
                 HStack {
                     ControlButton(label: "◀") { game.moveLeft() }
                     Spacer()
-                    ControlButton(label: "🔥") { game.shoot(playerY: geo.size.height - 70) }
-                    Spacer()
                     ControlButton(label: "▶") { game.moveRight(maxX: geo.size.width) }
                 }
                 .padding(.horizontal, 32)
@@ -134,6 +132,7 @@ class GameState: ObservableObject {
     private var screenSize: CGSize = .zero
     private var gameTimer: Timer?
     private var enemyTimer: Timer?
+    private var shootTimer: Timer?
 
     func start(screenSize: CGSize) {
         self.screenSize = screenSize
@@ -147,23 +146,29 @@ class GameState: ObservableObject {
         score = 0
         isGameOver = false
         playerX = screenSize.width / 2
+        self.screenSize = screenSize
         startTimers()
     }
 
     private func startTimers() {
         gameTimer?.invalidate()
         enemyTimer?.invalidate()
+        shootTimer?.invalidate()
 
-        // RunLoop.main に明示的に追加することで確実に動作させる
         gameTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] _ in
             self?.update()
         }
         RunLoop.main.add(gameTimer!, forMode: .common)
-        
+
         enemyTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
             self?.spawnEnemy()
         }
         RunLoop.main.add(enemyTimer!, forMode: .common)
+
+        shootTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
+            self?.autoShoot()
+        }
+        RunLoop.main.add(shootTimer!, forMode: .common)
     }
 
     private func update() {
@@ -183,6 +188,7 @@ class GameState: ObservableObject {
             isGameOver = true
             gameTimer?.invalidate()
             enemyTimer?.invalidate()
+            shootTimer?.invalidate()
             return
         }
 
@@ -217,7 +223,9 @@ class GameState: ObservableObject {
         playerX = min(maxX - 30, playerX + 24)
     }
 
-    func shoot(playerY: CGFloat) {
+    private func autoShoot() {
+        guard !isGameOver else { return }
+        let playerY = screenSize.height - 70
         bullets.append(GameObject(position: CGPoint(x: playerX, y: playerY - 24)))
     }
 }
