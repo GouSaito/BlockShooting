@@ -19,7 +19,7 @@ struct ContentView: View {
                 // 敵
                 ForEach(game.enemies) { enemy in
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(enemy.isPurple ? Color.purple : Color.red)
+                        .fill(enemy.enemyColor)
                         .frame(width: 40, height: 30)
                         .position(enemy.position)
                 }
@@ -164,6 +164,7 @@ struct ControlButton: View {
 enum EnemyType {
     case normal
     case purple(direction: CGFloat)
+    case golden(direction: CGFloat)
 }
 
 struct GameObject: Identifiable {
@@ -175,6 +176,21 @@ struct GameObject: Identifiable {
     var isPurple: Bool {
         if case .purple = enemyType { return true }
         return false
+    }
+
+    var isGolden: Bool {
+        if case .golden = enemyType { return true }
+        return false
+    }
+
+    var isEscaper: Bool { isPurple || isGolden }
+
+    var enemyColor: Color {
+        switch enemyType {
+        case .normal: return .red
+        case .purple: return .purple
+        case .golden: return .yellow
+        }
     }
 }
 
@@ -188,6 +204,7 @@ class GameState: ObservableObject {
     @Published var score = 0
     @Published var isGameOver = false
     @Published var bombCount = 3
+    @Published var bulletCount = 1
     @Published var bossPosition: CGPoint? = nil
     @Published var bossHP = 0
     private let bossMaxHP = 20
@@ -211,6 +228,7 @@ class GameState: ObservableObject {
         score = 0
         isGameOver = false
         bombCount = 3
+        bulletCount = 1
         bossPosition = nil
         bossHP = 0
         lastBossScore = 0
@@ -220,7 +238,7 @@ class GameState: ObservableObject {
     }
 
     private var enemySpawnInterval: Int {
-        max(25, 75 - score * 2)
+        max(10, 75 - score * 75 / 1000)
     }
 
     private func startTimers() {
@@ -261,7 +279,7 @@ class GameState: ObservableObject {
             switch e.enemyType {
             case .normal:
                 e.position.y += 1.5
-            case .purple(let dir):
+            case .purple(let dir), .golden(let dir):
                 if e.reachedCenter {
                     e.position.x += dir
                 } else if e.position.y >= midY {
@@ -275,15 +293,15 @@ class GameState: ObservableObject {
         }
 
         // 通常敵が画面下に到達 → ゲームオーバー
-        if enemies.contains(where: { !$0.isPurple && $0.position.y > screenSize.height - 80 }) {
+        if enemies.contains(where: { !$0.isEscaper && $0.position.y > screenSize.height - 80 }) {
             isGameOver = true
             gameTimer?.invalidate()
             shootTimer?.invalidate()
             return
         }
 
-        // 画面外の紫敵を除去
-        enemies.removeAll { $0.isPurple && ($0.position.x < -30 || $0.position.x > screenSize.width + 30) }
+        // 画面外の逃走敵を除去
+        enemies.removeAll { $0.isEscaper && ($0.position.x < -30 || $0.position.x > screenSize.width + 30) }
 
         // ボスのスポーン判定
         let bossThreshold = (lastBossScore / 100 + 1) * 100
@@ -293,11 +311,18 @@ class GameState: ObservableObject {
             bossPosition = CGPoint(x: screenSize.width / 2, y: 60)
         }
 
-        // ボスの移動（左右に往復）
+        // ボスの移動（左右往復しながら降下）
         if var pos = bossPosition {
             pos.x += bossDirection
+            pos.y += 0.3
             if pos.x <= 40 || pos.x >= screenSize.width - 40 {
                 bossDirection *= -1
+            }
+            if pos.y > screenSize.height - 80 {
+                isGameOver = true
+                gameTimer?.invalidate()
+                shootTimer?.invalidate()
+                return
             }
             bossPosition = pos
         }
@@ -326,6 +351,8 @@ class GameState: ObservableObject {
                     score += 1
                     if enemy.isPurple {
                         bombCount += 1
+                    } else if enemy.isGolden {
+                        bulletCount = min(bulletCount + 1, 5)
                     }
                 }
             }
@@ -338,10 +365,16 @@ class GameState: ObservableObject {
         guard !isGameOver else { return }
         let x = CGFloat.random(in: 30...(screenSize.width - 30))
 
-        if Int.random(in: 0..<10) == 0 {
+        let roll = Int.random(in: 0..<20)
+        if roll == 0 {
             let dir: CGFloat = Bool.random() ? 3.0 : -3.0
             var enemy = GameObject(position: CGPoint(x: x, y: 30))
             enemy.enemyType = .purple(direction: dir)
+            enemies.append(enemy)
+        } else if roll == 1 {
+            let dir: CGFloat = Bool.random() ? 3.5 : -3.5
+            var enemy = GameObject(position: CGPoint(x: x, y: 30))
+            enemy.enemyType = .golden(direction: dir)
             enemies.append(enemy)
         } else {
             enemies.append(GameObject(position: CGPoint(x: x, y: 30)))
@@ -373,7 +406,13 @@ class GameState: ObservableObject {
     private func autoShoot() {
         guard !isGameOver else { return }
         let playerY = screenSize.height - 70
-        bullets.append(GameObject(position: CGPoint(x: playerX, y: playerY - 24)))
+        let spread: CGFloat = 12
+        let totalWidth = spread * CGFloat(bulletCount - 1)
+        let startX = playerX - totalWidth / 2
+        for i in 0..<bulletCount {
+            let x = startX + spread * CGFloat(i)
+            bullets.append(GameObject(position: CGPoint(x: x, y: playerY - 24)))
+        }
     }
 }
 
