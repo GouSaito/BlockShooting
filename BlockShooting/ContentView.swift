@@ -233,7 +233,7 @@ class GameState: ObservableObject {
         }
         RunLoop.main.add(gameTimer!, forMode: .common)
 
-        shootTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
+        shootTimer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: true) { [weak self] _ in
             self?.autoShoot()
         }
         RunLoop.main.add(shootTimer!, forMode: .common)
