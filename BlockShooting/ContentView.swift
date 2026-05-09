@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import AVFoundation
 
 struct ContentView: View {
     @StateObject private var game = GameState()
@@ -241,6 +242,10 @@ class GameState: ObservableObject {
         max(10, 75 - score * 75 / 1000)
     }
 
+    private var enemySpeed: CGFloat {
+        min(8.0, 1.5 + CGFloat(score) * 0.01)
+    }
+
     private func startTimers() {
         gameTimer?.invalidate()
         shootTimer?.invalidate()
@@ -278,7 +283,7 @@ class GameState: ObservableObject {
             var e = enemy
             switch e.enemyType {
             case .normal:
-                e.position.y += 1.5
+                e.position.y += enemySpeed
             case .purple(let dir), .golden(let dir):
                 if e.reachedCenter {
                     e.position.x += dir
@@ -286,7 +291,7 @@ class GameState: ObservableObject {
                     e.reachedCenter = true
                     e.position.x += dir
                 } else {
-                    e.position.y += 1.5
+                    e.position.y += enemySpeed
                 }
             }
             return e
@@ -297,6 +302,7 @@ class GameState: ObservableObject {
             isGameOver = true
             gameTimer?.invalidate()
             shootTimer?.invalidate()
+            SoundManager.shared.playGameOver()
             return
         }
 
@@ -322,6 +328,7 @@ class GameState: ObservableObject {
                 isGameOver = true
                 gameTimer?.invalidate()
                 shootTimer?.invalidate()
+                SoundManager.shared.playGameOver()
                 return
             }
             bossPosition = pos
@@ -340,6 +347,9 @@ class GameState: ObservableObject {
                 if bossHP <= 0 {
                     bossPosition = nil
                     score += 10
+                    SoundManager.shared.playBossDefeat()
+                } else {
+                    SoundManager.shared.playBossHit()
                 }
                 continue
             }
@@ -351,8 +361,12 @@ class GameState: ObservableObject {
                     score += 1
                     if enemy.isPurple {
                         bombCount += 1
+                        SoundManager.shared.playPowerUp()
                     } else if enemy.isGolden {
                         bulletCount = min(bulletCount + 1, 5)
+                        SoundManager.shared.playPowerUp()
+                    } else {
+                        SoundManager.shared.playHit()
                     }
                 }
             }
@@ -392,6 +406,7 @@ class GameState: ObservableObject {
     func useBomb() {
         guard !isGameOver, bombCount > 0 else { return }
         bombCount -= 1
+        SoundManager.shared.playBomb()
         score += enemies.count
         enemies.removeAll()
         if bossPosition != nil {
@@ -405,6 +420,7 @@ class GameState: ObservableObject {
 
     private func autoShoot() {
         guard !isGameOver else { return }
+        SoundManager.shared.playShoot()
         let playerY = screenSize.height - 70
         let spread: CGFloat = 12
         let totalWidth = spread * CGFloat(bulletCount - 1)
@@ -413,6 +429,159 @@ class GameState: ObservableObject {
             let x = startX + spread * CGFloat(i)
             bullets.append(GameObject(position: CGPoint(x: x, y: playerY - 24)))
         }
+    }
+}
+
+// MARK: - サウンド
+
+class SoundManager {
+    static let shared = SoundManager()
+
+    private var engine: AVAudioEngine?
+    private var players: [AVAudioPlayerNode] = []
+    private var playerIndex = 0
+    private let playerCount = 4
+    private let sampleRate: Double = 44100
+    private var ready = false
+
+    private init() {
+        setupEngine()
+    }
+
+    private func setupEngine() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.ambient, mode: .default)
+            try session.setActive(true)
+        } catch {
+            return
+        }
+
+        let eng = AVAudioEngine()
+        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)
+        guard let format else { return }
+
+        for _ in 0..<playerCount {
+            let node = AVAudioPlayerNode()
+            eng.attach(node)
+            eng.connect(node, to: eng.mainMixerNode, format: format)
+            players.append(node)
+        }
+
+        do {
+            try eng.start()
+            engine = eng
+            ready = true
+        } catch {
+            return
+        }
+    }
+
+    private func nextPlayer() -> AVAudioPlayerNode? {
+        guard ready else { return nil }
+        let node = players[playerIndex]
+        playerIndex = (playerIndex + 1) % playerCount
+        return node
+    }
+
+    private func makeBuffer(frequency: Float, duration: Float, volume: Float = 0.3, decay: Bool = true) -> AVAudioPCMBuffer? {
+        let frameCount = AVAudioFrameCount(sampleRate * Double(duration))
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
+        buffer.frameLength = frameCount
+        guard let data = buffer.floatChannelData?[0] else { return nil }
+        for i in 0..<Int(frameCount) {
+            let t = Float(i) / Float(sampleRate)
+            let envelope: Float = decay ? max(0, 1.0 - t / duration) : 1.0
+            data[i] = sinf(2.0 * .pi * frequency * t) * volume * envelope
+        }
+        return buffer
+    }
+
+    private func play(_ buffer: AVAudioPCMBuffer) {
+        guard let node = nextPlayer() else { return }
+        node.stop()
+        node.scheduleBuffer(buffer, completionHandler: nil)
+        node.play()
+    }
+
+    func playShoot() {
+        guard let buf = makeBuffer(frequency: 880, duration: 0.05, volume: 0.15) else { return }
+        play(buf)
+    }
+
+    func playHit() {
+        guard let buf = makeBuffer(frequency: 520, duration: 0.08, volume: 0.25) else { return }
+        play(buf)
+    }
+
+    func playBossHit() {
+        guard let buf = makeBuffer(frequency: 300, duration: 0.06, volume: 0.2) else { return }
+        play(buf)
+    }
+
+    func playBossDefeat() {
+        let duration: Float = 0.4
+        let frameCount = AVAudioFrameCount(sampleRate * Double(duration))
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
+        buffer.frameLength = frameCount
+        guard let data = buffer.floatChannelData?[0] else { return }
+        for i in 0..<Int(frameCount) {
+            let t = Float(i) / Float(sampleRate)
+            let freq: Float = 200 + 600 * t
+            let envelope = max(0, 1.0 - t / duration)
+            data[i] = sinf(2.0 * .pi * freq * t) * 0.3 * envelope
+        }
+        play(buffer)
+    }
+
+    func playBomb() {
+        let duration: Float = 0.3
+        let frameCount = AVAudioFrameCount(sampleRate * Double(duration))
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
+        buffer.frameLength = frameCount
+        guard let data = buffer.floatChannelData?[0] else { return }
+        for i in 0..<Int(frameCount) {
+            let t = Float(i) / Float(sampleRate)
+            let freq: Float = 150 * (1.0 - t / duration)
+            let envelope = max(0, 1.0 - t / duration)
+            let noise = Float.random(in: -0.1...0.1)
+            data[i] = (sinf(2.0 * .pi * freq * t) + noise) * 0.35 * envelope
+        }
+        play(buffer)
+    }
+
+    func playPowerUp() {
+        let duration: Float = 0.2
+        let frameCount = AVAudioFrameCount(sampleRate * Double(duration))
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
+        buffer.frameLength = frameCount
+        guard let data = buffer.floatChannelData?[0] else { return }
+        for i in 0..<Int(frameCount) {
+            let t = Float(i) / Float(sampleRate)
+            let freq: Float = 600 + 800 * (t / duration)
+            data[i] = sinf(2.0 * .pi * freq * t) * 0.25
+        }
+        play(buffer)
+    }
+
+    func playGameOver() {
+        let duration: Float = 0.6
+        let frameCount = AVAudioFrameCount(sampleRate * Double(duration))
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
+        buffer.frameLength = frameCount
+        guard let data = buffer.floatChannelData?[0] else { return }
+        for i in 0..<Int(frameCount) {
+            let t = Float(i) / Float(sampleRate)
+            let freq: Float = 400 * (1.0 - t / duration * 0.6)
+            let envelope = max(0, 1.0 - t / duration)
+            data[i] = sinf(2.0 * .pi * freq * t) * 0.3 * envelope
+        }
+        play(buffer)
     }
 }
 
