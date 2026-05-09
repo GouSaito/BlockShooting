@@ -3,7 +3,7 @@
 //  xcodeTest
 //
 //  Created by 斎藤剛 on 2026/05/05.
-//
+//  vvvv
 
 import SwiftUI
 import Combine
@@ -99,16 +99,33 @@ struct ControlButton: View {
     let label: String
     let action: () -> Void
 
+    @State private var pressing = false
+    @State private var moveTimer: Timer?
+
     var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.title)
-                .frame(width: 64, height: 64)
-                .background(Color.white.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.white)
+        Text(label)
+            .font(.title)
+            .frame(width: 64, height: 64)
+            .background(pressing ? Color.white.opacity(0.3) : Color.white.opacity(0.15))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .foregroundColor(.white)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        guard !pressing else { return }
+                        pressing = true
+                        action()
+                        moveTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+                            action()
+                        }
+                        RunLoop.main.add(moveTimer!, forMode: .common)
+                    }
+                    .onEnded { _ in
+                        pressing = false
+                        moveTimer?.invalidate()
+                        moveTimer = nil
+                    }
+            )
     }
 }
 
@@ -216,11 +233,11 @@ class GameState: ObservableObject {
     }
 
     func moveLeft() {
-        playerX = max(30, playerX - 24)
+        playerX = max(30, playerX - 6)
     }
 
     func moveRight(maxX: CGFloat) {
-        playerX = min(maxX - 30, playerX + 24)
+        playerX = min(maxX - 30, playerX + 6)
     }
 
     private func autoShoot() {
