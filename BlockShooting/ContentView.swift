@@ -167,6 +167,15 @@ struct GameView: View {
                     .font(.headline)
                     .position(x: 70, y: 24)
 
+                // ステージクリア表示
+                if let stage = game.stageClearNumber {
+                    Text("ステージ\(stage)クリア")
+                        .font(.largeTitle.bold())
+                        .foregroundColor(.white)
+                        .shadow(color: .yellow, radius: 10)
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
+
                 // 操作ボタン・ボム
                 HStack {
                     ControlButton(label: "◀", isPressed: $game.movingLeft)
@@ -303,7 +312,9 @@ class GameState: ObservableObject {
     @Published var movingRight = false
     @Published var bossPosition: CGPoint? = nil
     @Published var bossHP = 0
+    @Published var stageClearNumber: Int? = nil
     private let bossMaxHP = 20
+    private var stageCount = 0
 
     private var screenSize: CGSize = .zero
     private var gameTimer: Timer?
@@ -352,6 +363,8 @@ class GameState: ObservableObject {
         bulletCount = 1
         bossPosition = nil
         bossHP = 0
+        stageClearNumber = nil
+        stageCount = 0
         lastBossScore = 0
         playerX = screenSize.width / 2
         self.screenSize = screenSize
@@ -486,7 +499,18 @@ class GameState: ObservableObject {
                 if bossHP <= 0 {
                     bossPosition = nil
                     score += 10
+                    stageCount += 1
+                    stageClearNumber = stageCount
+                    enemies.removeAll()
+                    bullets.removeAll()
                     SoundManager.shared.playBossDefeat()
+                    gameTimer?.invalidate()
+                    shootTimer?.invalidate()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                        guard let self, !self.isGameOver else { return }
+                        self.stageClearNumber = nil
+                        self.startTimers()
+                    }
                 } else {
                     SoundManager.shared.playBossHit()
                 }
