@@ -130,9 +130,10 @@ struct GameView: View {
 
                 // 敵
                 ForEach(game.enemies) { enemy in
-                    Circle()
+                    Rectangle()
                         .fill(enemy.enemyColor)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 32, height: 32)
+                        .rotationEffect(.degrees(enemy.rotation))
                         .position(enemy.position)
                 }
 
@@ -270,6 +271,7 @@ struct GameObject: Identifiable {
     var reachedCenter = false
     var velocityX: CGFloat = 0
     var velocityY: CGFloat = -8
+    var rotation: Double = 0
 
     var isPurple: Bool {
         if case .purple = enemyType { return true }
@@ -488,7 +490,8 @@ class GameState: ObservableObject {
                     && abs(bullet.position.y - enemy.position.y) < 24 {
                     hitEnemyIDs.insert(enemy.id)
                     let offsetX = (bullet.position.x - enemy.position.x) / 28
-                    reflectedBullets[bullet.id] = offsetX * 6
+                    let tilt = sin(enemy.rotation * .pi / 180) * 8
+                    reflectedBullets[bullet.id] = offsetX * 6 + tilt
                     score += 1
                     if enemy.isPurple {
                         bombCount += 1
@@ -518,19 +521,24 @@ class GameState: ObservableObject {
         guard !isGameOver else { return }
         let x = CGFloat.random(in: 30...(screenSize.width - 30))
 
+        let angle = Double.random(in: -45...45)
         let roll = Int.random(in: 0..<20)
         if roll == 0 {
             let dir: CGFloat = Bool.random() ? 3.0 : -3.0
             var enemy = GameObject(position: CGPoint(x: x, y: 30))
             enemy.enemyType = .purple(direction: dir)
+            enemy.rotation = angle
             enemies.append(enemy)
         } else if roll == 1 {
             let dir: CGFloat = Bool.random() ? 3.5 : -3.5
             var enemy = GameObject(position: CGPoint(x: x, y: 30))
             enemy.enemyType = .golden(direction: dir)
+            enemy.rotation = angle
             enemies.append(enemy)
         } else {
-            enemies.append(GameObject(position: CGPoint(x: x, y: 30)))
+            var enemy = GameObject(position: CGPoint(x: x, y: 30))
+            enemy.rotation = angle
+            enemies.append(enemy)
         }
     }
 
