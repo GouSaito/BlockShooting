@@ -91,22 +91,16 @@ struct GameOverView: View {
                 }
                 VStack(spacing: 12) {
                     Button(action: onRetry) {
-                        Text("もう一度")
-                            .font(.title3.bold())
+                        Image("retry")
+                            .resizable()
+                            .scaledToFit()
                             .frame(width: 200)
-                            .padding(.vertical, 12)
-                            .background(Color.yellow)
-                            .foregroundColor(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                     Button(action: onTitle) {
-                        Text("タイトルへ")
-                            .font(.title3.bold())
+                        Image("ReturnTitle")
+                            .resizable()
+                            .scaledToFit()
                             .frame(width: 200)
-                            .padding(.vertical, 12)
-                            .background(Color.white.opacity(0.2))
-                            .foregroundColor(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                 }
             }
