@@ -9,8 +9,111 @@ import SwiftUI
 import Combine
 import AVFoundation
 
+enum Screen {
+    case title
+    case game
+    case gameOver(score: Int)
+}
+
 struct ContentView: View {
+    @State private var screen: Screen = .title
+
+    var body: some View {
+        switch screen {
+        case .title:
+            TitleView {
+                screen = .game
+            }
+        case .game:
+            GameView { score in
+                screen = .gameOver(score: score)
+            }
+        case .gameOver(let score):
+            GameOverView(score: score, onRetry: {
+                screen = .game
+            }, onTitle: {
+                screen = .title
+            })
+        }
+    }
+}
+
+// MARK: - タイトル画面
+
+struct TitleView: View {
+    let onStart: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 32) {
+                Image("BlockShootingTitle")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(.horizontal, 32)
+                Button(action: onStart) {
+                    Image("start_button")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 200)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - ゲームオーバー画面
+
+struct GameOverView: View {
+    let score: Int
+    let onRetry: () -> Void
+    let onTitle: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 20) {
+                ZStack {
+                    Image("GameOver")
+                        .resizable()
+                        .scaledToFit()
+                        .padding(.horizontal, 32)
+                    Text("SCORE: \(score)")
+                        .font(.title.bold())
+                        .foregroundColor(.white)
+                        .shadow(color: .black, radius: 4)
+                        .offset(y: 90)
+                }
+                VStack(spacing: 12) {
+                    Button(action: onRetry) {
+                        Text("もう一度")
+                            .font(.title3.bold())
+                            .frame(width: 200)
+                            .padding(.vertical, 12)
+                            .background(Color.yellow)
+                            .foregroundColor(.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    Button(action: onTitle) {
+                        Text("タイトルへ")
+                            .font(.title3.bold())
+                            .frame(width: 200)
+                            .padding(.vertical, 12)
+                            .background(Color.white.opacity(0.2))
+                            .foregroundColor(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - ゲーム画面
+
+struct GameView: View {
     @StateObject private var game = GameState()
+    let onGameOver: (Int) -> Void
 
     var body: some View {
         GeometryReader { geo in
@@ -31,7 +134,6 @@ struct ContentView: View {
                         .fill(Color.green)
                         .frame(width: 80, height: 50)
                         .position(bossPos)
-                    // HPバー
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color.gray.opacity(0.5))
                         .frame(width: 80, height: 8)
@@ -83,26 +185,6 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 32)
                 .position(x: geo.size.width / 2, y: geo.size.height - 30)
-
-                // ゲームオーバー
-                if game.isGameOver {
-                    VStack(spacing: 16) {
-                        Text("GAME OVER")
-                            .font(.largeTitle.bold())
-                            .foregroundColor(.red)
-                        Text("SCORE: \(game.score)")
-                            .font(.title2)
-                            .foregroundColor(.white)
-                        Button("もう一度") {
-                            game.restart(screenSize: geo.size)
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 10)
-                        .background(Color.yellow)
-                        .foregroundColor(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                }
             }
             .onAppear {
                 game.start(screenSize: geo.size)
@@ -118,6 +200,14 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
                 game.stop()
+            }
+            .onChange(of: game.isGameOver) { _, isOver in
+                if isOver {
+                    let finalScore = game.score
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        onGameOver(finalScore)
+                    }
+                }
             }
         }
     }
@@ -270,7 +360,7 @@ class GameState: ObservableObject {
     }
 
     private var enemySpeed: CGFloat {
-        min(8.0, 0.5 + CGFloat(score) * 0.01)
+        min(8, 990.5 + CGFloat(score) * 0.01)
     }
 
     private func startTimers() {
