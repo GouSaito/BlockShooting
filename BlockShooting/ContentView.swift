@@ -399,8 +399,21 @@ class GameState: ObservableObject {
 
         // 弾を移動
         bullets = bullets
-            .map { var b = $0; b.position.x += b.velocityX; b.position.y += b.velocityY; return b }
-            .filter { $0.position.y > 0 && $0.position.y < screenSize.height && $0.position.x > 0 && $0.position.x < screenSize.width }
+            .map {
+                var b = $0
+                b.position.x += b.velocityX
+                b.position.y += b.velocityY
+                if b.position.x <= 0 || b.position.x >= screenSize.width {
+                    b.velocityX *= -1
+                    b.position.x = max(0, min(b.position.x, screenSize.width))
+                }
+                if b.position.y <= 0 {
+                    b.velocityY *= -1
+                    b.position.y = 0
+                }
+                return b
+            }
+            .filter { $0.position.y < screenSize.height }
 
         // 敵を移動
         let midY = screenSize.height / 2
@@ -491,7 +504,7 @@ class GameState: ObservableObject {
                         bombCount += 1
                         SoundManager.shared.playPowerUp()
                     } else if enemy.isGolden {
-                        bulletCount = min(bulletCount + 1, 5)
+                        bulletCount = min(bulletCount + 1, 7)
                         SoundManager.shared.playPowerUp()
                     } else {
                         SoundManager.shared.playHit()
@@ -555,12 +568,40 @@ class GameState: ObservableObject {
         guard !isGameOver else { return }
         SoundManager.shared.playShoot()
         let playerY = screenSize.height - 70
+        let pos = CGPoint(x: playerX, y: playerY - 24)
+        let speed: CGFloat = 8
+
+        let baseCount = min(bulletCount, 3)
         let spread: CGFloat = 12
-        let totalWidth = spread * CGFloat(bulletCount - 1)
+        let totalWidth = spread * CGFloat(baseCount - 1)
         let startX = playerX - totalWidth / 2
-        for i in 0..<bulletCount {
+        for i in 0..<baseCount {
             let x = startX + spread * CGFloat(i)
-            bullets.append(GameObject(position: CGPoint(x: x, y: playerY - 24)))
+            bullets.append(GameObject(position: CGPoint(x: x, y: pos.y)))
+        }
+
+        if bulletCount >= 4 {
+            let angle = 10.0 * .pi / 180.0
+            var left = GameObject(position: pos)
+            left.velocityX = -sin(angle) * speed
+            left.velocityY = -cos(angle) * speed
+            var right = GameObject(position: pos)
+            right.velocityX = sin(angle) * speed
+            right.velocityY = -cos(angle) * speed
+            bullets.append(left)
+            bullets.append(right)
+        }
+
+        if bulletCount >= 6 {
+            let angle = 45.0 * .pi / 180.0
+            var left = GameObject(position: pos)
+            left.velocityX = -sin(angle) * speed
+            left.velocityY = -cos(angle) * speed
+            var right = GameObject(position: pos)
+            right.velocityX = sin(angle) * speed
+            right.velocityY = -cos(angle) * speed
+            bullets.append(left)
+            bullets.append(right)
         }
     }
 }
