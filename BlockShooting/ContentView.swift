@@ -64,7 +64,7 @@ struct ContentView: View {
 
                 // 操作ボタン・ボム
                 HStack {
-                    ControlButton(label: "◀") { game.moveLeft() }
+                    ControlButton(label: "◀", isPressed: $game.movingLeft)
                     Spacer()
                     Button {
                         game.useBomb()
@@ -79,7 +79,7 @@ struct ContentView: View {
                     }
                     .disabled(game.bombCount <= 0)
                     Spacer()
-                    ControlButton(label: "▶") { game.moveRight(maxX: geo.size.width) }
+                    ControlButton(label: "▶", isPressed: $game.movingRight)
                 }
                 .padding(.horizontal, 32)
                 .position(x: geo.size.width / 2, y: geo.size.height - 30)
@@ -140,36 +140,20 @@ struct Triangle: Shape {
 
 struct ControlButton: View {
     let label: String
-    let action: () -> Void
-
-    @GestureState private var pressing = false
-    @State private var moveTimer: Timer?
+    @Binding var isPressed: Bool
 
     var body: some View {
         Text(label)
             .font(.title)
             .frame(width: 64, height: 64)
-            .background(pressing ? Color.white.opacity(0.3) : Color.white.opacity(0.15))
+            .background(isPressed ? Color.white.opacity(0.3) : Color.white.opacity(0.15))
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .foregroundColor(.white)
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .updating($pressing) { _, state, _ in
-                        state = true
-                    }
+                    .onChanged { _ in isPressed = true }
+                    .onEnded { _ in isPressed = false }
             )
-            .onChange(of: pressing) { _, newValue in
-                if newValue {
-                    action()
-                    moveTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
-                        action()
-                    }
-                    RunLoop.main.add(moveTimer!, forMode: .common)
-                } else {
-                    moveTimer?.invalidate()
-                    moveTimer = nil
-                }
-            }
     }
 }
 
@@ -219,6 +203,8 @@ class GameState: ObservableObject {
     @Published var isGameOver = false
     @Published var bombCount = 3
     @Published var bulletCount = 1
+    @Published var movingLeft = false
+    @Published var movingRight = false
     @Published var bossPosition: CGPoint? = nil
     @Published var bossHP = 0
     private let bossMaxHP = 20
@@ -284,7 +270,7 @@ class GameState: ObservableObject {
     }
 
     private var enemySpeed: CGFloat {
-        min(8.0, 1.5 + CGFloat(score) * 0.01)
+        min(8.0, 0.5 + CGFloat(score) * 0.01)
     }
 
     private func startTimers() {
@@ -305,6 +291,10 @@ class GameState: ObservableObject {
 
     private func update() {
         guard !isGameOver else { return }
+
+        // 自機の移動
+        if movingLeft { playerX = max(30, playerX - 3) }
+        if movingRight { playerX = min(screenSize.width - 30, playerX + 3) }
 
         // 敵の生成
         enemySpawnCounter += 1
@@ -436,14 +426,6 @@ class GameState: ObservableObject {
         } else {
             enemies.append(GameObject(position: CGPoint(x: x, y: 30)))
         }
-    }
-
-    func moveLeft() {
-        playerX = max(30, playerX - 6)
-    }
-
-    func moveRight(maxX: CGFloat) {
-        playerX = min(maxX - 30, playerX + 6)
     }
 
     func useBomb() {
