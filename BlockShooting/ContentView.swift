@@ -30,8 +30,10 @@ struct ContentView: View {
             }
         case .gameOver(let score):
             GameOverView(score: score, onRetry: {
+                SoundManager.shared.stopAllSE()
                 screen = .game
             }, onTitle: {
+                SoundManager.shared.stopAllSE()
                 screen = .title
             })
         }
@@ -51,7 +53,10 @@ struct TitleView: View {
                     .resizable()
                     .scaledToFit()
                     .padding(.horizontal, 32)
-                Button(action: onStart) {
+                Button(action: {
+                    SoundManager.shared.playStart()
+                    onStart()
+                }) {
                     Image("start_button")
                         .resizable()
                         .scaledToFit()
@@ -105,6 +110,9 @@ struct GameOverView: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            SoundManager.shared.playGameOver()
         }
     }
 }
@@ -308,14 +316,12 @@ class GameState: ObservableObject {
 
     deinit {
         SoundManager.shared.stopBGM()
-        SoundManager.shared.stopAllSE()
     }
 
     func stop() {
         gameTimer?.invalidate()
         shootTimer?.invalidate()
         SoundManager.shared.stopBGM()
-        SoundManager.shared.stopAllSE()
     }
 
     func pause() {
@@ -360,7 +366,7 @@ class GameState: ObservableObject {
     }
 
     private var enemySpeed: CGFloat {
-        min(8, 990.5 + CGFloat(score) * 0.01)
+        min(8, 0.5 + CGFloat(score) * 0.01)
     }
 
     private func startTimers() {
@@ -424,7 +430,6 @@ class GameState: ObservableObject {
             gameTimer?.invalidate()
             shootTimer?.invalidate()
             SoundManager.shared.stopBGM()
-            SoundManager.shared.playGameOver()
             return
         }
 
@@ -451,7 +456,6 @@ class GameState: ObservableObject {
                 gameTimer?.invalidate()
                 shootTimer?.invalidate()
                 SoundManager.shared.stopBGM()
-            SoundManager.shared.playGameOver()
                 return
             }
             bossPosition = pos
@@ -601,6 +605,7 @@ class SoundManager {
     func playBomb() { playSE("bomb") }
     func playPowerUp() { playSE("powerup") }
     func playGameOver() { playSE("gameover") }
+    func playStart() { playSE("start") }
 }
 
 #Preview {
