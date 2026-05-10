@@ -275,6 +275,7 @@ struct GameObject: Identifiable {
     var velocityX: CGFloat = 0
     var velocityY: CGFloat = -8
     var rotation: Double = 0
+    var hp: Int = 1
 
     var isPurple: Bool {
         if case .purple = enemyType { return true }
@@ -313,8 +314,9 @@ class GameState: ObservableObject {
     @Published var bossPosition: CGPoint? = nil
     @Published var bossHP = 0
     @Published var stageClearNumber: Int? = nil
-    private let bossMaxHP = 20
+    private var bossMaxHP = 20
     private var stageCount = 0
+    private var enemyBaseHP = 1
 
     private var screenSize: CGSize = .zero
     private var gameTimer: Timer?
@@ -365,6 +367,8 @@ class GameState: ObservableObject {
         bossHP = 0
         stageClearNumber = nil
         stageCount = 0
+        enemyBaseHP = 1
+        bossMaxHP = 20
         lastBossScore = 0
         playerX = screenSize.width / 2
         self.screenSize = screenSize
@@ -486,7 +490,7 @@ class GameState: ObservableObject {
         }
 
         // 衝突判定
-        var hitEnemyIDs = Set<UUID>()
+        var damagedEnemyIDs = Set<UUID>()
         var reflectedBullets = [UUID: CGFloat]()
         for bullet in bullets {
             // ボスとの衝突
@@ -501,6 +505,8 @@ class GameState: ObservableObject {
                     score += 10
                     stageCount += 1
                     stageClearNumber = stageCount
+                    enemyBaseHP += 1
+                    bossMaxHP += 100
                     enemies.removeAll()
                     bullets.removeAll()
                     SoundManager.shared.playBossDefeat()
@@ -519,24 +525,31 @@ class GameState: ObservableObject {
             for enemy in enemies {
                 if abs(bullet.position.x - enemy.position.x) < 28
                     && abs(bullet.position.y - enemy.position.y) < 24 {
-                    hitEnemyIDs.insert(enemy.id)
+                    damagedEnemyIDs.insert(enemy.id)
                     let offsetX = (bullet.position.x - enemy.position.x) / 28
                     let tilt = sin(enemy.rotation * .pi / 180) * 8
                     reflectedBullets[bullet.id] = offsetX * 6 + tilt
-                    score += 1
-                    if enemy.isPurple {
-                        bombCount += 1
-                        SoundManager.shared.playPowerUp()
-                    } else if enemy.isGolden {
-                        bulletCount = min(bulletCount + 1, 7)
-                        SoundManager.shared.playPowerUp()
-                    } else {
-                        SoundManager.shared.playHit()
-                    }
+                    SoundManager.shared.playHit()
                 }
             }
         }
-        enemies = enemies.filter { !hitEnemyIDs.contains($0.id) }
+        enemies = enemies.compactMap { enemy in
+            guard damagedEnemyIDs.contains(enemy.id) else { return enemy }
+            var e = enemy
+            e.hp -= 1
+            if e.hp <= 0 {
+                score += 1
+                if enemy.isPurple {
+                    bombCount += 1
+                    SoundManager.shared.playPowerUp()
+                } else if enemy.isGolden {
+                    bulletCount = min(bulletCount + 1, 7)
+                    SoundManager.shared.playPowerUp()
+                }
+                return nil
+            }
+            return e
+        }
         bullets = bullets.map { bullet in
             if let vx = reflectedBullets[bullet.id] {
                 var b = bullet
@@ -559,16 +572,19 @@ class GameState: ObservableObject {
             var enemy = GameObject(position: CGPoint(x: x, y: 30))
             enemy.enemyType = .purple(direction: dir)
             enemy.rotation = angle
+            enemy.hp = enemyBaseHP
             enemies.append(enemy)
         } else if roll == 1 {
             let dir: CGFloat = Bool.random() ? 3.5 : -3.5
             var enemy = GameObject(position: CGPoint(x: x, y: 30))
             enemy.enemyType = .golden(direction: dir)
             enemy.rotation = angle
+            enemy.hp = enemyBaseHP
             enemies.append(enemy)
         } else {
             var enemy = GameObject(position: CGPoint(x: x, y: 30))
             enemy.rotation = angle
+            enemy.hp = enemyBaseHP
             enemies.append(enemy)
         }
     }
