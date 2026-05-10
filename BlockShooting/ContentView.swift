@@ -130,9 +130,9 @@ struct GameView: View {
 
                 // 敵
                 ForEach(game.enemies) { enemy in
-                    RoundedRectangle(cornerRadius: 6)
+                    Circle()
                         .fill(enemy.enemyColor)
-                        .frame(width: 40, height: 30)
+                        .frame(width: 36, height: 36)
                         .position(enemy.position)
                 }
 
@@ -268,6 +268,8 @@ struct GameObject: Identifiable {
     var position: CGPoint
     var enemyType: EnemyType = .normal
     var reachedCenter = false
+    var velocityX: CGFloat = 0
+    var velocityY: CGFloat = -8
 
     var isPurple: Bool {
         if case .purple = enemyType { return true }
@@ -399,10 +401,10 @@ class GameState: ObservableObject {
             enemySpawnCounter = 0
         }
 
-        // 弾を上に移動
+        // 弾を移動
         bullets = bullets
-            .map { GameObject(position: CGPoint(x: $0.position.x, y: $0.position.y - 8)) }
-            .filter { $0.position.y > 0 }
+            .map { var b = $0; b.position.x += b.velocityX; b.position.y += b.velocityY; return b }
+            .filter { $0.position.y > 0 && $0.position.y < screenSize.height && $0.position.x > 0 && $0.position.x < screenSize.width }
 
         // 敵を移動
         let midY = screenSize.height / 2
@@ -463,13 +465,14 @@ class GameState: ObservableObject {
 
         // 衝突判定
         var hitEnemyIDs = Set<UUID>()
-        var hitBulletIDs = Set<UUID>()
+        var reflectedBullets = [UUID: CGFloat]()
         for bullet in bullets {
             // ボスとの衝突
             if let bPos = bossPosition,
                abs(bullet.position.x - bPos.x) < 40
                 && abs(bullet.position.y - bPos.y) < 30 {
-                hitBulletIDs.insert(bullet.id)
+                let offsetX = (bullet.position.x - bPos.x) / 40
+                reflectedBullets[bullet.id] = offsetX * 6
                 bossHP -= 1
                 if bossHP <= 0 {
                     bossPosition = nil
@@ -484,7 +487,8 @@ class GameState: ObservableObject {
                 if abs(bullet.position.x - enemy.position.x) < 28
                     && abs(bullet.position.y - enemy.position.y) < 24 {
                     hitEnemyIDs.insert(enemy.id)
-                    hitBulletIDs.insert(bullet.id)
+                    let offsetX = (bullet.position.x - enemy.position.x) / 28
+                    reflectedBullets[bullet.id] = offsetX * 6
                     score += 1
                     if enemy.isPurple {
                         bombCount += 1
@@ -499,7 +503,15 @@ class GameState: ObservableObject {
             }
         }
         enemies = enemies.filter { !hitEnemyIDs.contains($0.id) }
-        bullets = bullets.filter { !hitBulletIDs.contains($0.id) }
+        bullets = bullets.map { bullet in
+            if let vx = reflectedBullets[bullet.id] {
+                var b = bullet
+                b.velocityX = vx
+                b.velocityY = 8
+                return b
+            }
+            return bullet
+        }
     }
 
     private func spawnEnemy() {
