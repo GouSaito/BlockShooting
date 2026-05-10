@@ -142,7 +142,7 @@ struct ControlButton: View {
     let label: String
     let action: () -> Void
 
-    @State private var pressing = false
+    @GestureState private var pressing = false
     @State private var moveTimer: Timer?
 
     var body: some View {
@@ -154,21 +154,22 @@ struct ControlButton: View {
             .foregroundColor(.white)
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard !pressing else { return }
-                        pressing = true
-                        action()
-                        moveTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
-                            action()
-                        }
-                        RunLoop.main.add(moveTimer!, forMode: .common)
-                    }
-                    .onEnded { _ in
-                        pressing = false
-                        moveTimer?.invalidate()
-                        moveTimer = nil
+                    .updating($pressing) { _, state, _ in
+                        state = true
                     }
             )
+            .onChange(of: pressing) { _, newValue in
+                if newValue {
+                    action()
+                    moveTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+                        action()
+                    }
+                    RunLoop.main.add(moveTimer!, forMode: .common)
+                } else {
+                    moveTimer?.invalidate()
+                    moveTimer = nil
+                }
+            }
     }
 }
 
